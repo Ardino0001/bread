@@ -353,27 +353,102 @@ Close.TextSize = 24
 Close.Font = Enum.Font.GothamBold
 Close.Parent = Header
 
--- Content
-local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1, -16, 1, -52)
-Content.Position = UDim2.new(0, 8, 0, 48)
-Content.BackgroundTransparency = 1
-Content.ScrollBarThickness = 2
-Content.ScrollBarImageColor3 = Color3.fromRGB(138, 43, 226)
-Content.CanvasSize = UDim2.new(0, 0, 0, 420)
-Content.BorderSizePixel = 0
-Content.Parent = Main
+-- Content Container
+local ContentHolder = Instance.new("Frame")
+ContentHolder.Size = UDim2.new(1, -16, 1, -90)
+ContentHolder.Position = UDim2.new(0, 8, 0, 82)
+ContentHolder.BackgroundTransparency = 1
+ContentHolder.BorderSizePixel = 0
+ContentHolder.Parent = Main
 
-local Layout = Instance.new("UIListLayout", Content)
-Layout.Padding = UDim.new(0, 6)
+-- Tab Bar
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -16, 0, 28)
+TabBar.Position = UDim2.new(0, 8, 0, 48)
+TabBar.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+TabBar.BorderSizePixel = 0
+TabBar.Parent = Main
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 4)
 
--- UI Builders
-local function Section(name)
+local TabLayout = Instance.new("UIListLayout", TabBar)
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding = UDim.new(0, 4)
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+-- Tab System
+local Tabs = {}
+local TabContents = {}
+local ActiveTab = nil
+
+local function CreateTab(name, icon)
+    -- Tab Button
+    local tabBtn = Instance.new("TextButton")
+    tabBtn.Size = UDim2.new(0, 95, 0, 22)
+    tabBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    tabBtn.Text = (icon or "") .. " " .. name
+    tabBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    tabBtn.TextSize = 11
+    tabBtn.Font = Enum.Font.GothamMedium
+    tabBtn.Parent = TabBar
+    Instance.new("UICorner", tabBtn).CornerRadius = UDim.new(0, 4)
+    
+    -- Tab Content
+    local content = Instance.new("ScrollingFrame")
+    content.Size = UDim2.new(1, 0, 1, 0)
+    content.BackgroundTransparency = 1
+    content.ScrollBarThickness = 2
+    content.ScrollBarImageColor3 = Color3.fromRGB(138, 43, 226)
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    content.BorderSizePixel = 0
+    content.Visible = false
+    content.Parent = ContentHolder
+    
+    local layout = Instance.new("UIListLayout", content)
+    layout.Padding = UDim.new(0, 6)
+    
+    Tabs[name] = tabBtn
+    TabContents[name] = content
+    
+    tabBtn.MouseButton1Click:Connect(function()
+        -- Deactivate all tabs
+        for tabName, btn in pairs(Tabs) do
+            Tween(btn, {BackgroundColor3 = Color3.fromRGB(35, 35, 45)}, 0.15)
+            btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+            TabContents[tabName].Visible = false
+        end
+        
+        -- Activate this tab
+        Tween(tabBtn, {BackgroundColor3 = Color3.fromRGB(138, 43, 226)}, 0.15)
+        tabBtn.TextColor3 = Color3.new(1, 1, 1)
+        content.Visible = true
+        ActiveTab = name
+    end)
+    
+    return content
+end
+
+-- Create Tabs
+local CombatTab = CreateTab("Combat", "⚔")
+local VisualsTab = CreateTab("Visuals", "👁")
+local SettingsTab = CreateTab("Settings", "⚙")
+
+-- Activate first tab by default
+task.defer(function()
+    Tabs["Combat"].TextColor3 = Color3.new(1, 1, 1)
+    Tabs["Combat"].BackgroundColor3 = Color3.fromRGB(138, 43, 226)
+    TabContents["Combat"].Visible = true
+    ActiveTab = "Combat"
+end)
+
+-- UI Builders (now takes parent as parameter)
+local function Section(parent, name)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, 0, 0, 34)
     f.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
     f.BorderSizePixel = 0
-    f.Parent = Content
+    f.Parent = parent
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 4)
     
     local l = Instance.new("TextLabel")
@@ -421,12 +496,12 @@ local function Toggle(sec, val, cb)
     end)
 end
 
-local function Slider(name, min, max, val, cb)
+local function Slider(parent, name, min, max, val, cb)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, 0, 0, 48)
     f.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
     f.BorderSizePixel = 0
-    f.Parent = Content
+    f.Parent = parent
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 4)
     
     local l = Instance.new("TextLabel")
@@ -479,13 +554,13 @@ local function Slider(name, min, max, val, cb)
     end)
 end
 
-local function Dropdown(name, opts, val, cb)
+local function Dropdown(parent, name, opts, val, cb)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, 0, 0, 34)
     f.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
     f.ClipsDescendants = true
     f.BorderSizePixel = 0
-    f.Parent = Content
+    f.Parent = parent
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 4)
     
     local l = Instance.new("TextLabel")
@@ -540,12 +615,12 @@ local function Dropdown(name, opts, val, cb)
     end)
 end
 
-local function Keybind(name, key, cb)
+local function Keybind(parent, name, key, cb)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, 0, 0, 34)
     f.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
     f.BorderSizePixel = 0
-    f.Parent = Content
+    f.Parent = parent
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 4)
     
     local l = Instance.new("TextLabel")
@@ -585,27 +660,36 @@ local function Keybind(name, key, cb)
     end)
 end
 
--- Build UI
-local esp = Section("ESP Players")
-Toggle(esp, Config.ESPEnabled, function(v) Config.ESPEnabled = v end)
-
-local aim = Section("Aimbot")
+-- ============================================
+-- BUILD UI - COMBAT TAB
+-- ============================================
+local aim = Section(CombatTab, "Aimbot")
 Toggle(aim, Config.AimbotEnabled, function(v) Config.AimbotEnabled = v end)
 
-Dropdown("Target Part", Config.TargetParts, Config.AimbotTargetPart, function(v) Config.AimbotTargetPart = v end)
+Dropdown(CombatTab, "Target Part", Config.TargetParts, Config.AimbotTargetPart, function(v) Config.AimbotTargetPart = v end)
 
-local team = Section("Team Check")
+Slider(CombatTab, "FOV Radius", 50, 600, Config.AimbotFOV, function(v) Config.AimbotFOV = v end)
+Slider(CombatTab, "Smoothing", 1, 20, Config.AimbotSmoothing, function(v) Config.AimbotSmoothing = v end)
+
+local team = Section(CombatTab, "Team Check")
 Toggle(team, Config.TeamCheck, function(v) Config.TeamCheck = v end)
 
-local wall = Section("Wall Check")
+local wall = Section(CombatTab, "Wall Check")
 Toggle(wall, Config.VisibilityCheck, function(v) Config.VisibilityCheck = v end)
 
-local fov = Section("Show FOV")
+-- ============================================
+-- BUILD UI - VISUALS TAB
+-- ============================================
+local esp = Section(VisualsTab, "ESP Players")
+Toggle(esp, Config.ESPEnabled, function(v) Config.ESPEnabled = v end)
+
+local fov = Section(VisualsTab, "Show FOV Circle")
 Toggle(fov, Config.ShowFOV, function(v) Config.ShowFOV = v end)
 
-Slider("FOV Radius", 50, 600, Config.AimbotFOV, function(v) Config.AimbotFOV = v end)
-Slider("Smoothing", 1, 20, Config.AimbotSmoothing, function(v) Config.AimbotSmoothing = v end)
-Keybind("Toggle Key", Config.ToggleKey, function(v) Config.ToggleKey = v end)
+-- ============================================
+-- BUILD UI - SETTINGS TAB
+-- ============================================
+Keybind(SettingsTab, "Toggle Key", Config.ToggleKey, function(v) Config.ToggleKey = v end)
 
 -- Dragging
 local dragging, dragStart, startPos
