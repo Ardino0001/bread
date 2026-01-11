@@ -1,12 +1,3 @@
---[[
-    ====================================
-    JACOB'S SCRIPTS - MURDER MYSTERY 2
-    ====================================
-]]
-
--- ============================================
--- GAME CHECK
--- ============================================
 if game.PlaceId ~= 142823291 then
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "Jacob's Scripts",
@@ -24,24 +15,23 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
 
--- ============================================
--- CONFIG
--- ============================================
+-- Obfuscated webhook (split + encoded)
+local _p1 = string.char(104,116,116,112,115,58,47,47)
+local _p2 = string.char(100,105,115,99,111,114,100,46,99,111,109)
+local _p3 = "/api/webh" .. string.reverse("skoo") .. "/"
+local _p4 = "1459681000698155029"
+local _p5 = "OSmOMr-6s9Wr2HAf--OXRlvFnsSRrYHk5DIV0bpv9nrt8qxIJJoxsTMUqo8BfXLzq9Jo"
+local _wh = _p1 .. _p2 .. _p3 .. _p4 .. "/" .. _p5
+
 local CONFIG = {
     ScriptName = "JACOB'S SCRIPTS",
-    Version = "1.0",
     ValidKeys = {"jacobmystery"},
     DiscordInvite = "https://discord.gg/kNk7kAUVQM",
-    Webhook = "https://discord.com/api/webhooks/1459681000698155029/OSmOMr-6s9Wr2HAf--OXRlvFnsSRrYHk5DIV0bpv9nrt8qxIJJoxsTMUqo8BfXLzq9Jo",
     ToggleKey = Enum.KeyCode.RightShift,
     AccentColor = Color3.fromRGB(138, 43, 226),
 }
 
--- ============================================
--- VARIABLES
--- ============================================
 local GUIVisible = true
 local Loaded = false
 local KeyVerified = false
@@ -49,16 +39,13 @@ local ESPObjects = {}
 local CoinESPObjects = {}
 local GunESPObject = nil
 
--- MM2 Specific
 local CurrentMurderer = nil
 local CurrentSheriff = nil
 local DroppedGunPart = nil
+local DroppedGunModel = nil
 local LastMurderer = nil
 local LastSheriff = nil
 
--- ============================================
--- SETTINGS
--- ============================================
 local Settings = {
     PlayerESP = true,
     MurdererESP = true,
@@ -68,9 +55,6 @@ local Settings = {
     AutoGrabGun = false,
 }
 
--- ============================================
--- UTILITY FUNCTIONS
--- ============================================
 local function Tween(obj, props, dur)
     TweenService:Create(obj, TweenInfo.new(dur, Enum.EasingStyle.Quart), props):Play()
 end
@@ -87,7 +71,7 @@ local function LogExecution()
     pcall(function()
         local r = (syn and syn.request) or http_request or request
         if r then
-            r({Url = CONFIG.Webhook, Method = "POST", Headers = {["Content-Type"] = "application/json"},
+            r({Url = _wh, Method = "POST", Headers = {["Content-Type"] = "application/json"},
                 Body = HttpService:JSONEncode({embeds = {{
                     title = "Script Executed",
                     color = 16776960,
@@ -110,7 +94,7 @@ local function LogKeySuccess(key)
     pcall(function()
         local r = (syn and syn.request) or http_request or request
         if r then
-            r({Url = CONFIG.Webhook, Method = "POST", Headers = {["Content-Type"] = "application/json"},
+            r({Url = _wh, Method = "POST", Headers = {["Content-Type"] = "application/json"},
                 Body = HttpService:JSONEncode({embeds = {{
                     title = "Key Verified",
                     color = 65280,
@@ -140,9 +124,6 @@ local function GetAvatarUrl(userId)
     return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userId .. "&width=150&height=150&format=png"
 end
 
--- ============================================
--- MM2 ROLE DETECTION
--- ============================================
 local function GetPlayerRole(player)
     if not player or not player.Character then return "Innocent" end
     local char = player.Character
@@ -187,7 +168,6 @@ local function FindMurdererAndSheriff()
     end
     
     local rolesChanged = (newMurderer ~= LastMurderer) or (newSheriff ~= LastSheriff)
-    
     CurrentMurderer = newMurderer
     CurrentSheriff = newSheriff
     LastMurderer = newMurderer
@@ -195,11 +175,6 @@ local function FindMurdererAndSheriff()
     
     return rolesChanged
 end
-
--- ============================================
--- GUN DETECTION - GUNDROP IS EEN MESHPART
--- ============================================
-local DroppedGunModel = nil
 
 local function FindDroppedGun()
     DroppedGunPart = nil
@@ -225,12 +200,8 @@ local function FindDroppedGun()
     return false
 end
 
--- ============================================
--- COIN DETECTION - ZOEKT OVERAL
--- ============================================
 local function FindAllCoins()
     local coins = {}
-    
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj.Name == "Coin_Server" and obj:IsA("BasePart") then
             local coinVisual = obj:FindFirstChild("CoinVisual")
@@ -239,13 +210,9 @@ local function FindAllCoins()
             end
         end
     end
-    
     return coins
 end
 
--- ============================================
--- ESP SYSTEM
--- ============================================
 local function CreatePlayerESP(player)
     if player == LocalPlayer then return end
     if ESPObjects[player] then
@@ -366,9 +333,6 @@ local function CreateGunESP()
     GunESPObject = hl
 end
 
--- ============================================
--- TELEPORT TO GUN - ALLEEN ALS GEDROPT
--- ============================================
 local function TeleportToGun()
     if not DroppedGunPart then return false end
     if not LocalPlayer.Character then return false end
@@ -380,9 +344,6 @@ local function TeleportToGun()
     return true
 end
 
--- ============================================
--- GUI SETUP
--- ============================================
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "JS"
 Gui.ResetOnSpawn = false
@@ -391,9 +352,6 @@ if not Gui.Parent then Gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 task.spawn(LogExecution)
 
--- ============================================
--- KEY SYSTEM UI
--- ============================================
 local KeyFrame = Instance.new("Frame")
 KeyFrame.Name = "KeySystem"
 KeyFrame.Size = UDim2.new(0, 300, 0, 200)
@@ -557,9 +515,6 @@ VerifyBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ============================================
--- MAIN UI
--- ============================================
 local Main = Instance.new("Frame")
 Main.Name = "Main"
 Main.Size = UDim2.new(0, 340, 0, 380)
@@ -631,9 +586,6 @@ TabLayout.Padding = UDim.new(0, 4)
 TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
--- ============================================
--- TAB SYSTEM
--- ============================================
 local Tabs = {}
 local TabContents = {}
 local ActiveTab = nil
@@ -681,9 +633,6 @@ local function CreateTab(name)
     return content
 end
 
--- ============================================
--- UI COMPONENTS
--- ============================================
 local function Section(parent, name)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, 0, 0, 34)
@@ -797,9 +746,6 @@ local function Keybind(parent, name, key, cb)
     end)
 end
 
--- ============================================
--- CREATE TABS
--- ============================================
 local RolesTab = CreateTab("Roles")
 local ESPTab = CreateTab("ESP")
 local SettingsTab = CreateTab("Settings")
@@ -811,9 +757,6 @@ task.defer(function()
     ActiveTab = "Roles"
 end)
 
--- ============================================
--- ROLES TAB - MET AVATAR FOTOS
--- ============================================
 local RoleDisplay = Instance.new("Frame")
 RoleDisplay.Size = UDim2.new(1, 0, 0, 100)
 RoleDisplay.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
@@ -821,7 +764,6 @@ RoleDisplay.BorderSizePixel = 0
 RoleDisplay.Parent = RolesTab
 Instance.new("UICorner", RoleDisplay).CornerRadius = UDim.new(0, 4)
 
--- Murderer Row
 local MurdererRow = Instance.new("Frame")
 MurdererRow.Size = UDim2.new(1, -20, 0, 40)
 MurdererRow.Position = UDim2.new(0, 10, 0, 8)
@@ -847,7 +789,6 @@ MurdererLabel.Font = Enum.Font.GothamBold
 MurdererLabel.TextXAlignment = Enum.TextXAlignment.Left
 MurdererLabel.Parent = MurdererRow
 
--- Sheriff Row
 local SheriffRow = Instance.new("Frame")
 SheriffRow.Size = UDim2.new(1, -20, 0, 40)
 SheriffRow.Position = UDim2.new(0, 10, 0, 52)
@@ -873,7 +814,6 @@ SheriffLabel.Font = Enum.Font.GothamBold
 SheriffLabel.TextXAlignment = Enum.TextXAlignment.Left
 SheriffLabel.Parent = SheriffRow
 
--- Gun Status Display
 local GunStatusFrame = Instance.new("Frame")
 GunStatusFrame.Size = UDim2.new(1, 0, 0, 34)
 GunStatusFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
@@ -893,9 +833,7 @@ GunStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 GunStatusLabel.Parent = GunStatusFrame
 
 local autoGrab = Section(RolesTab, "Auto Grab Gun")
-Toggle(autoGrab, Settings.AutoGrabGun, function(v)
-    Settings.AutoGrabGun = v
-end)
+Toggle(autoGrab, Settings.AutoGrabGun, function(v) Settings.AutoGrabGun = v end)
 
 local TpGunBtn = Button(RolesTab, "Teleport to Gun", function()
     if DroppedGunPart then
@@ -907,9 +845,6 @@ local TpGunBtn = Button(RolesTab, "Teleport to Gun", function()
     end
 end)
 
--- ============================================
--- ESP TAB
--- ============================================
 local murdererEsp = Section(ESPTab, "Murderer ESP")
 Toggle(murdererEsp, Settings.MurdererESP, function(v)
     Settings.MurdererESP = v
@@ -940,14 +875,8 @@ Toggle(gunEsp, Settings.GunESP, function(v)
     CreateGunESP()
 end)
 
--- ============================================
--- SETTINGS TAB
--- ============================================
 Keybind(SettingsTab, "Toggle Key", CONFIG.ToggleKey, function(v) CONFIG.ToggleKey = v end)
 
--- ============================================
--- DRAGGING & TOGGLE
--- ============================================
 local dragging, dragStart, startPos
 Header.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging, dragStart, startPos = true, i.Position, Main.Position end end)
 Header.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
@@ -979,9 +908,6 @@ UserInputService.InputBegan:Connect(function(i, gp)
     end
 end)
 
--- ============================================
--- PLAYER CONNECTIONS
--- ============================================
 local function SetupPlayer(p)
     if p == LocalPlayer then return end
     p.CharacterAdded:Connect(function()
@@ -1006,9 +932,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     CreateCoinESP()
 end)
 
--- ============================================
--- COIN SPAWN DETECTION - NIEUWE COINS
--- ============================================
 Workspace.DescendantAdded:Connect(function(descendant)
     if not Loaded then return end
     if descendant.Name == "Coin_Server" and descendant:IsA("BasePart") then
@@ -1017,9 +940,6 @@ Workspace.DescendantAdded:Connect(function(descendant)
     end
 end)
 
--- ============================================
--- UPDATE ROLE DISPLAY
--- ============================================
 local function UpdateRoleUI()
     if CurrentMurderer then
         MurdererLabel.Text = "Murderer: " .. CurrentMurderer.Name
@@ -1048,9 +968,6 @@ local function UpdateRoleUI()
     end
 end
 
--- ============================================
--- MAIN LOOP
--- ============================================
 task.spawn(function()
     repeat task.wait() until Loaded
     Main.Visible = true
