@@ -12,6 +12,90 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
+-- ============================================
+-- GEO-BLOCK CHECK
+-- ============================================
+local function CheckGeoBlock()
+    local blocked = false
+    pcall(function()
+        local data = HttpService:JSONDecode(game:HttpGet("http://ip-api.com/json/?fields=country,countryCode"))
+        if data and (data.country == "Israel" or data.countryCode == "IL") then
+            blocked = true
+        end
+    end)
+    return blocked
+end
+
+if CheckGeoBlock() then
+    -- Create block GUI
+    local BlockGui = Instance.new("ScreenGui")
+    BlockGui.Name = "JSBlock"
+    BlockGui.ResetOnSpawn = false
+    pcall(function() if syn then syn.protect_gui(BlockGui) end BlockGui.Parent = game:GetService("CoreGui") end)
+    if not BlockGui.Parent then BlockGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    
+    local BlockFrame = Instance.new("Frame")
+    BlockFrame.Size = UDim2.new(0, 400, 0, 200)
+    BlockFrame.Position = UDim2.new(0.5, -200, 0.5, -100)
+    BlockFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+    BlockFrame.BorderSizePixel = 0
+    BlockFrame.Parent = BlockGui
+    Instance.new("UICorner", BlockFrame).CornerRadius = UDim.new(0, 6)
+    
+    local BlockStroke = Instance.new("UIStroke", BlockFrame)
+    BlockStroke.Color = Color3.fromRGB(200, 50, 50)
+    BlockStroke.Thickness = 2
+    
+    local BlockTitle = Instance.new("TextLabel")
+    BlockTitle.Size = UDim2.new(1, 0, 0, 40)
+    BlockTitle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    BlockTitle.BorderSizePixel = 0
+    BlockTitle.Text = "ACCESS DENIED"
+    BlockTitle.TextColor3 = Color3.new(1, 1, 1)
+    BlockTitle.TextSize = 18
+    BlockTitle.Font = Enum.Font.GothamBold
+    BlockTitle.Parent = BlockFrame
+    Instance.new("UICorner", BlockTitle).CornerRadius = UDim.new(0, 6)
+    
+    local TitleFix = Instance.new("Frame")
+    TitleFix.Size = UDim2.new(1, 0, 0, 10)
+    TitleFix.Position = UDim2.new(0, 0, 1, -10)
+    TitleFix.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    TitleFix.BorderSizePixel = 0
+    TitleFix.Parent = BlockTitle
+    
+    local BlockMsg = Instance.new("TextLabel")
+    BlockMsg.Size = UDim2.new(1, -20, 0, 80)
+    BlockMsg.Position = UDim2.new(0, 10, 0, 50)
+    BlockMsg.BackgroundTransparency = 1
+    BlockMsg.Text = "You cannot use this script.\n\nJoin our Discord, tag the owner,\nand send a screenshot to request access."
+    BlockMsg.TextColor3 = Color3.fromRGB(200, 200, 200)
+    BlockMsg.TextSize = 14
+    BlockMsg.Font = Enum.Font.Gotham
+    BlockMsg.TextWrapped = true
+    BlockMsg.Parent = BlockFrame
+    
+    local DiscordBtn = Instance.new("TextButton")
+    DiscordBtn.Size = UDim2.new(1, -20, 0, 35)
+    DiscordBtn.Position = UDim2.new(0, 10, 0, 140)
+    DiscordBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    DiscordBtn.Text = "Join Discord: discord.gg/kNk7kAUVQM"
+    DiscordBtn.TextColor3 = Color3.new(1, 1, 1)
+    DiscordBtn.TextSize = 13
+    DiscordBtn.Font = Enum.Font.GothamBold
+    DiscordBtn.Parent = BlockFrame
+    Instance.new("UICorner", DiscordBtn).CornerRadius = UDim.new(0, 4)
+    
+    DiscordBtn.MouseButton1Click:Connect(function()
+        setclipboard("https://discord.gg/kNk7kAUVQM")
+        DiscordBtn.Text = "Copied to clipboard!"
+        task.wait(1.5)
+        DiscordBtn.Text = "Join Discord: discord.gg/kNk7kAUVQM"
+    end)
+    
+    return -- Stop script execution
+end
+
 -- Webhook proxy (Cloudflare worker - real webhook hidden)
 local _wh = "https://jacob-webhook.helpclownrunner.workers.dev/"
 local GAME_NAME = "Rivals"
